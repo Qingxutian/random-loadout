@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>三角洲行动 · 随机配装</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="emblem">🎯</div>
+      <h1>三角洲行动 <em>随机配装</em></h1>
+      <p class="sub">单人 · 双人 · 三人 · 战备达标生成器</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel controls">
+      <div class="control-group">
+        <span class="control-label">👥 人数</span>
+        <div class="segmented" id="player-count">
+          <button type="button" data-value="1" class="active">单人</button>
+          <button type="button" data-value="2">双人</button>
+          <button type="button" data-value="3">三人</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">🎒 装备</span>
+        <div class="segmented" id="equip-mode">
+          <button type="button" data-value="same">全员相同</button>
+          <button type="button" data-value="diff" class="active">各自不同</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">🪖 干员</span>
+        <div class="segmented" id="operator-mode">
+          <button type="button" data-value="same">全员相同</button>
+          <button type="button" data-value="diff" class="active">各自不同</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">🗺️ 地图</span>
+        <div class="segmented wrap" id="map-select"></div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">☠️ 难度</span>
+        <div class="segmented" id="difficulty-select"></div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">🔫 枪械排除</span>
+        <div class="toggle-row" id="exclude-select">
+          <button type="button" data-value="霰弹枪">排除霰弹枪</button>
+          <button type="button" data-value="栓动狙击">排除栓狙</button>
+          <button type="button" data-value="手枪">排除手枪</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">💰 价值档位</span>
+        <div class="segmented" id="value-select"></div>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="roll-btn" class="primary">🎲 随机生成</button>
+        <button type="button" id="copy-btn" class="ghost">📋 复制清单</button>
+      </div>
+    </section>
+
+    <section id="meta" class="panel mission hidden"></section>
+    <section id="players" class="grid"></section>
+  </main>
+
+  <footer>
+    <span>数据仅供娱乐参考 · 装备与价格可在 data.js 中自行增改</span>
+    <span class="kbd-hint">按 R 键快速再随机</span>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
