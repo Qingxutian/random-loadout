@@ -57,6 +57,99 @@ body > * {
   z-index: 1;
 }
 
+/* ---------- 顶部导航栏 ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 -16px;
+  padding: 10px 22px;
+  background: rgba(8, 12, 18, 0.9);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.topbar-brand {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+
+#mode-switch button {
+  padding: 7px 16px;
+  font-size: 13px;
+}
+
+/* ---------- 联机房间状态栏 ---------- */
+.room-bar {
+  margin: 0 -16px;
+  padding: 10px 22px;
+  background: linear-gradient(90deg, rgba(245, 166, 35, 0.12), rgba(16, 23, 34, 0.9));
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.room-bar b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+#room-id {
+  color: var(--accent);
+  font-size: 16px;
+  letter-spacing: 2px;
+}
+
+#room-role {
+  color: var(--accent);
+}
+
+.room-btn {
+  background: #0c1320;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.room-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.room-btn.danger:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.net-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+.net-status.ok { color: var(--green, #3fbf7f); }
+.net-status.warn { color: var(--accent); }
+.net-status.no { color: var(--red); }
+
 /* ---------- 头部 ---------- */
 .hero {
   text-align: center;
@@ -213,6 +306,58 @@ main {
   color: var(--red);
   border-color: var(--red);
   box-shadow: 0 0 12px rgba(232, 92, 92, 0.25);
+}
+
+/* ---------- 装备价值锁 ---------- */
+.value-cap-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#value-cap-toggle {
+  background: #0c1320;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+#value-cap-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+#value-cap-toggle.active {
+  background: rgba(245, 166, 35, 0.16);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(245, 166, 35, 0.25);
+}
+
+#value-cap-input {
+  background: #0c1320;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 13px;
+  width: 160px;
+  outline: none;
+  transition: border-color 0.18s;
+}
+
+#value-cap-input:focus {
+  border-color: var(--accent);
+}
+
+#value-cap-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .actions {
@@ -521,10 +666,76 @@ button.ghost:active {
   gap: 6px;
 }
 
+.not-counted {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  background: rgba(93, 162, 232, 0.12);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
 .weapon-row {
   display: flex;
   align-items: center;
   gap: 9px;
+}
+
+/* ---------- 单项锁定 ---------- */
+.lock-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #0c1320;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.lock-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.lock-btn.on {
+  background: rgba(245, 166, 35, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 10px rgba(245, 166, 35, 0.25);
+}
+
+.lock-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.lock-btn.mini {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.operator-row .lock-btn {
+  margin-left: 4px;
+}
+
+.chip.locked {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chip.locked::before {
+  background: var(--accent);
 }
 
 .weapon-name {
@@ -657,7 +868,169 @@ footer {
   letter-spacing: 1px;
 }
 
+/* ---------- Toast 提示 ---------- */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(16px);
+  background: rgba(16, 23, 34, 0.96);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 60;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  max-width: min(90vw, 480px);
+  text-align: center;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ---------- 创建/加入房间弹窗 ---------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 8, 13, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.modal-box {
+  position: relative;
+  width: min(92vw, 380px);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 24px 26px 22px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  animation: fadeUp 0.25s ease both;
+}
+
+.modal-box h2 {
+  font-size: 18px;
+  margin-bottom: 10px;
+  letter-spacing: 2px;
+}
+
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: var(--text);
+}
+
+.modal-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.room-code {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 10px;
+  text-align: center;
+  color: var(--accent);
+  background: #0c1320;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  padding: 14px 0 12px;
+  margin: 10px 0 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+#join-room-input {
+  width: 100%;
+  background: #0c1320;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 22px;
+  text-align: center;
+  letter-spacing: 8px;
+  padding: 10px 8px;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+
+#join-room-input:focus {
+  border-color: var(--accent);
+}
+
+#join-room-input::placeholder {
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: rgba(147, 162, 180, 0.5);
+}
+
+.modal-error {
+  color: var(--red);
+  font-size: 12px;
+  min-height: 18px;
+  margin: 6px 0 4px;
+}
+
+.modal-primary {
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* 队员视图：控制面板只读，仅保留复制 */
+.controls.room-member {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.controls.room-member #copy-btn {
+  pointer-events: auto;
+  opacity: 1;
+}
+
 @media (max-width: 720px) {
+  .topbar {
+    padding: 10px 14px;
+  }
+
+  .room-bar {
+    padding: 10px 14px;
+    gap: 10px 14px;
+  }
+
+  .topbar-inner {
+    justify-content: center;
+  }
+
   .controls {
     padding: 14px;
   }

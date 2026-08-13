@@ -7,6 +7,26 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <nav class="topbar">
+    <div class="topbar-inner">
+      <span class="topbar-brand">🎯 三角洲行动 · 随机配装</span>
+      <div class="segmented" id="mode-switch">
+        <button type="button" data-mode="solo" class="active">单人模式</button>
+        <button type="button" data-mode="create">创建房间</button>
+        <button type="button" data-mode="join">加入房间</button>
+      </div>
+    </div>
+  </nav>
+
+  <div id="room-bar" class="room-bar hidden">
+    <span class="room-item">房间号 <b id="room-id">------</b></span>
+    <span class="room-item">在线 <b id="room-online">1</b> 人</span>
+    <span class="room-item">身份【<b id="room-role">房主</b>】</span>
+    <span class="room-item net-status" id="room-net-status">⚡ <b id="room-net-text">未连接</b></span>
+    <button type="button" id="room-copy" class="room-btn">复制房间号</button>
+    <button type="button" id="room-exit" class="room-btn danger">退出房间</button>
+  </div>
+
   <header class="hero">
     <div class="hero-inner">
       <div class="emblem">🎯</div>
@@ -35,10 +55,18 @@
       </div>
 
       <div class="control-group">
-        <span class="control-label">🪖 干员</span>
+        <span class="control-label">🎲 干员随机</span>
+        <div class="segmented" id="operator-enabled">
+          <button type="button" data-value="on" class="active">开启随机</button>
+          <button type="button" data-value="off">固定干员</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">🪖 干员模式</span>
         <div class="segmented" id="operator-mode">
           <button type="button" data-value="same">全员相同</button>
-          <button type="button" data-value="diff" class="active">各自不同</button>
+          <button type="button" data-value="diff" class="active">各自随机</button>
         </div>
       </div>
 
@@ -66,6 +94,14 @@
         <div class="segmented" id="value-select"></div>
       </div>
 
+      <div class="control-group">
+        <span class="control-label">🔒 装备价值锁</span>
+        <div class="value-cap-row">
+          <button type="button" id="value-cap-toggle">启用</button>
+          <input type="number" id="value-cap-input" min="0" step="10000" placeholder="每人上限（哈夫币）" disabled>
+        </div>
+      </div>
+
       <div class="actions">
         <button type="button" id="roll-btn" class="primary">🎲 随机生成</button>
         <button type="button" id="copy-btn" class="ghost">📋 复制清单</button>
@@ -81,8 +117,30 @@
     <span class="kbd-hint">按 R 键快速再随机</span>
   </footer>
 
+  <div id="modal" class="modal hidden">
+    <div id="modal-backdrop" class="modal-backdrop"></div>
+    <div class="modal-box">
+      <button type="button" id="modal-close" class="modal-close">✕</button>
+      <h2 id="modal-title">创建房间</h2>
+      <div id="create-room-body">
+        <p class="modal-hint">把房间号分享给队友即可加入</p>
+        <div id="create-room-code" class="room-code">000000</div>
+        <button type="button" id="create-room-confirm" class="primary modal-primary">创建房间</button>
+      </div>
+      <div id="join-room-body" class="hidden">
+        <p class="modal-hint">输入房主分享的 6 位数字房间号</p>
+        <input type="text" id="join-room-input" maxlength="6" inputmode="numeric" autocomplete="off" placeholder="例如 123456">
+        <p id="join-room-error" class="modal-error"></p>
+        <button type="button" id="join-room-confirm" class="primary modal-primary">加入房间</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/goeasy-2.13.24.min.js"></script>
   <script src="data.js"></script>
   <script src="core.js"></script>
+  <script src="state.js"></script>
+  <script src="goeasy.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
