@@ -182,6 +182,39 @@
     }
   }
 
+  /**
+   * 查询当前频道在线成员（SDK 2.7+ hereNow；不可用时回调 null）
+   * @param {function} onSuccess ({ members, amount }) => void
+   * @param {function} [onFailed] (err) => void
+   */
+  function queryMembers(onSuccess, onFailed) {
+    const goEasy = net.goEasy;
+    if (!goEasy || !net.channel || !goEasy.pubsub || typeof goEasy.pubsub.hereNow !== "function") {
+      if (onSuccess) onSuccess(null);
+      return false;
+    }
+    try {
+      goEasy.pubsub.hereNow({
+        channel: net.channel,
+        limit: 30,
+        onSuccess: (res) => {
+          const content = res && res.content;
+          if (onSuccess) {
+            onSuccess({
+              members: (content && Array.isArray(content.members)) ? content.members : [],
+              amount: (content && Number.isInteger(content.amount) && content.amount >= 0) ? content.amount : 0
+            });
+          }
+        },
+        onFailed: (err) => { if (onFailed) onFailed(err); }
+      });
+      return true;
+    } catch (e) {
+      if (onFailed) onFailed(e);
+      return false;
+    }
+  }
+
   /** 主动断开：退订频道 + 断开连接，回到可再次创建/加入的状态 */
   function disconnect() {
     const goEasy = net.goEasy;
@@ -215,6 +248,7 @@
     connect,
     disconnect,
     publishState,
+    queryMembers,
     getStatus,
     getRole: () => net.role,
     getRoomId: () => net.roomId,

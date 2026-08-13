@@ -10,6 +10,7 @@ const netCalls = {
   publishes: [],
   messageHandlers: [],
   presenceHandlers: [],
+  hereNowCalls: [],
   disconnects: 0
 };
 
@@ -26,6 +27,7 @@ class FakeGoEasy {
       publish: (o) => { netCalls.publishes.push(o); o.onSuccess && o.onSuccess(); },
       subscribe: (o) => { netCalls.messageHandlers.push({ channel: o.channel, onMessage: o.onMessage }); o.onSuccess && o.onSuccess(); },
       unsubscribe: (o) => { o.onSuccess && o.onSuccess(); },
+      hereNow: (o) => { netCalls.hereNowCalls.push(o); o.onSuccess && o.onSuccess({ content: { members: [{ id: "u_host" }], amount: 1 } }); },
       subscribePresence: (o) => { netCalls.presenceHandlers.push({ channel: o.channel, onPresence: o.onPresence }); o.onSuccess && o.onSuccess(); },
       unsubscribePresence: (o) => { o.onSuccess && o.onSuccess(); }
     };
@@ -371,19 +373,26 @@ if (roomBar.classList.contains("hidden") || !/^\d{6}$/.test(hostRoomId) || roomR
 const hostInst = netCalls.instances[0];
 console.log(
   "房主联机：CommonKey =", hostInst && hostInst.appkey === "BC-8205070a1db64512908a6bd5c7b57838",
-  "| 已广播状态 =", netCalls.publishes.length >= 1
+  "| 已广播状态 =", netCalls.publishes.length >= 1,
+  "| 已查询在线成员 =", netCalls.hereNowCalls.length >= 1
 );
-if (!hostInst || hostInst.appkey !== "BC-8205070a1db64512908a6bd5c7b57838" || netCalls.publishes.length < 1) {
-  throw new Error("房主未用 CommonKey 连接或未广播初始状态");
+if (!hostInst || hostInst.appkey !== "BC-8205070a1db64512908a6bd5c7b57838" || netCalls.publishes.length < 1 || netCalls.hereNowCalls.length < 1) {
+  throw new Error("房主未用 CommonKey 连接、未广播初始状态或未查询在线成员");
 }
 const hostState = JSON.parse(netCalls.publishes[0].message);
 if (!hostState.result || hostState.roomId !== hostRoomId) {
   throw new Error("房主广播的状态缺少结果或房间号");
 }
 
-// 模拟队员加入：房主应收到 presence join 并补发一次状态（新人拿最新结果）
+// 模拟队员加入：房主应收到 presence join 并补发一次状态（新人拿最新结果）。
+// 回归：presence 事件的 amount 不可靠（这里故意给 1），人数必须按成员列表 members 计算为 2
 const hostPresence = netCalls.presenceHandlers.find((h) => h.channel === "rl_" + hostRoomId);
-hostPresence.onPresence({ action: "join", amount: 2, member: { id: "u_member", data: {} } });
+hostPresence.onPresence({
+  action: "join",
+  amount: 1,
+  members: [{ id: "u_host" }, { id: "u_member" }],
+  member: { id: "u_member", data: {} }
+});
 console.log("成员加入：在线人数更新 =", elements["#room-online"].textContent === "2", "| 房主补发状态 =", netCalls.publishes.length >= 2);
 if (elements["#room-online"].textContent !== "2" || netCalls.publishes.length < 2) {
   throw new Error("presence join 未更新在线人数或未触发补发");

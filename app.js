@@ -57,14 +57,20 @@
     render();
   }
 
-  // 在线人数 / 上线事件：房主收到新成员 join 时补发一次当前状态，确保新人拿到最新结果
+  // 在线人数 / 上线事件：人数优先取 SDK 维护的成员列表长度（presence 事件自带 members，
+  // 2.x 的 amount 字段不稳定，可能缺失或只是单次变化量），再回退到 amount；
+  // 房主收到新成员 join 时补发一次当前状态，确保新人拿到最新结果
   function handlePresence(ev) {
     if (state.mode !== "room" || !state.room) return;
-    const amount = Number(ev && ev.amount);
-    if (Number.isInteger(amount) && amount >= 1) {
-      state.room.online = amount;
-      renderRoomUI();
+    let online = state.room.online;
+    if (Array.isArray(ev && ev.members) && ev.members.length >= 1) {
+      online = ev.members.length;
+    } else {
+      const amount = Number(ev && ev.amount);
+      if (Number.isInteger(amount) && amount >= 1) online = amount;
     }
+    state.room.online = online;
+    renderRoomUI();
     if (state.room.role === "host" && ev && (ev.action === "join" || ev.action === "back")) {
       broadcast();
     }
@@ -241,6 +247,17 @@
       if (state.mode === "room" && state.room && state.room.role === "host") {
         broadcast(); // 房主连接成功后立即广播当前状态
       }
+      // 连接成功后主动查一次在线成员，避免人数停留在初始的 1
+      GoEasyNet.queryMembers((r) => {
+        if (state.mode !== "room" || !state.room || !r) return;
+        const n = (Array.isArray(r.members) && r.members.length >= 1)
+          ? r.members.length
+          : Number(r.amount);
+        if (Number.isInteger(n) && n >= 1 && state.room.online !== n) {
+          state.room.online = n;
+          renderRoomUI();
+        }
+      });
     }
   };
 
