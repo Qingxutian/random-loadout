@@ -11,7 +11,7 @@ git add -A
 git commit -m "新增联机房间：GoEasy 实时同步 + 装备价值锁 + 单项锁定"
 
 if (-not (git remote get-url origin 2>$null)) {
-    git remote add origin https://github.com/qingxutian/random-loadout.git
+    git remote add origin https://github.com/Qingxutian/random-loadout.git
 }
 
 git push -u origin main
