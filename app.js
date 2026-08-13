@@ -50,18 +50,22 @@
     const roomId = state.room.id;
     const online = state.room.online;
     const role = state.room.role === "host" ? "host" : "member";
+    const roster = (incoming.room && Array.isArray(incoming.room.roster)) ? incoming.room.roster : [];
     Object.keys(incoming).forEach((k) => { state[k] = incoming[k]; });
     state.mode = "room";
-    state.room = { id: roomId, role, online };
+    state.room = { id: roomId, role, online, roster };
     syncAllControls();
     render();
   }
 
   // 在线人数 / 上线事件：人数优先取 SDK 维护的成员列表长度（presence 事件自带 members，
   // 2.x 的 amount 字段不稳定，可能缺失或只是单次变化量），再回退到 amount；
-  // 房主收到新成员 join 时补发一次当前状态，确保新人拿到最新结果
+  // 房主按加入顺序分配号位（房主固定 1 号，先到先得 2/3 号，离开释放），
+  // 并在号位变化时补发一次当前状态，确保新人和全员的「你」标记正确
   function handlePresence(ev) {
     if (state.mode !== "room" || !state.room) return;
+    const action = ev && ev.action;
+    const memberId = ev && ev.member && ev.member.id;
     let online = state.room.online;
     if (Array.isArray(ev && ev.members) && ev.members.length >= 1) {
       online = ev.members.length;
@@ -70,10 +74,36 @@
       if (Number.isInteger(amount) && amount >= 1) online = amount;
     }
     state.room.online = online;
-    renderRoomUI();
-    if (state.room.role === "host" && ev && (ev.action === "join" || ev.action === "back")) {
-      broadcast();
+
+    let rosterChanged = false;
+    if (state.room.role === "host" && memberId && state.room.id) {
+      const roster = Array.isArray(state.room.roster) ? state.room.roster.slice() : [];
+      if (action === "join" || action === "back") {
+        if (!roster.some((e) => e.id === memberId)) {
+          const used = {};
+          roster.forEach((e) => { used[e.slot] = true; });
+          let slot = 0;
+          for (let i = 1; i <= state.count; i++) {
+            if (!used[i]) { slot = i; break; }
+          }
+          if (slot) {
+            roster.push({ id: memberId, slot });
+            state.room.roster = roster;
+            rosterChanged = true;
+          }
+        }
+      } else if (action === "leave" || action === "offline" || action === "timeout") {
+        const next = roster.filter((e) => e.id !== memberId);
+        if (next.length !== roster.length) {
+          state.room.roster = next;
+          rosterChanged = true;
+        }
+      }
     }
+
+    renderRoomUI();
+    if (rosterChanged) render();
+    if (rosterChanged || (state.room.role === "host" && (action === "join" || action === "back"))) broadcast();
   }
 
   const netStatusLabels = {
@@ -265,7 +295,7 @@
     const id = createCode.textContent.trim();
     if (!/^\d{6}$/.test(id)) return;
     state.mode = "room";
-    state.room = { id, role: "host", online: 1 };
+    state.room = { id, role: "host", online: 1, roster: [{ id: GoEasyNet.getUserId(), slot: 1 }] };
     closeRoomModal();
     renderRoomUI();
     render();
@@ -484,6 +514,14 @@
     return c;
   }
 
+  // 当前用户（房主或队员）对应的号位：联机房间里由房主按加入顺序分配
+  function mySlot() {
+    if (state.mode !== "room" || !state.room || !Array.isArray(state.room.roster)) return 0;
+    const id = GoEasyNet.getUserId();
+    const entry = state.room.roster.find((x) => x.id === id);
+    return entry ? entry.slot : 0;
+  }
+
   function render() {
     const r = state.result;
     if (!r) return;
@@ -539,16 +577,18 @@
     `;
 
     const names = state.count === 1 ? ["你"] : state.count === 2 ? ["玩家 1", "玩家 2"] : ["玩家 1", "玩家 2", "玩家 3"];
+    const my = mySlot();
 
     $("#players").innerHTML = r.players.map((p, i) => {
       const same = state.sameEquip && i > 0;
       const ok = r.requirement <= 0 || p.price >= r.requirement;
       const over = r.valueCap > 0 && p.price > r.valueCap;
       const pct = r.requirement > 0 ? Math.min(100, Math.round((p.price / r.requirement) * 100)) : 100;
+      const mine = my === i + 1;
       return `
-        <div class="player-card">
+        <div class="player-card${mine ? " you" : ""}">
           <div class="card-head">
-            <span class="player-name">${names[i]}${same ? `<span class="same-badge">同套装备</span>` : ""}</span>
+            <span class="player-name">${names[i]}${mine ? `<span class="you-badge">你</span>` : ""}${same ? `<span class="same-badge">同套装备</span>` : ""}</span>
             <span class="card-price">
               <span class="price-label">战备值</span>
               <span class="price-num">${fmt(p.price)}</span>

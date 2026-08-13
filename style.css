@@ -518,6 +518,23 @@ button.ghost:active {
   vertical-align: 2px;
 }
 
+.player-card.you {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px rgba(90, 167, 232, 0.5), 0 14px 36px rgba(0, 0, 0, 0.4);
+}
+
+.you-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #0d1622;
+  margin-left: 6px;
+  vertical-align: 2px;
+}
+
 .card-price {
   display: flex;
   flex-direction: column;

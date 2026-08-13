@@ -393,7 +393,7 @@ if (s3.count !== 1 || s3.tier !== null || s3.valueCap !== null || !s3.excluded["
 const { serializeWire, parseWire } = globalThis.LoadoutState;
 const w1 = createState();
 w1.mode = "room";
-w1.room = { id: "123456", role: "host", online: 3 };
+w1.room = { id: "123456", role: "host", online: 3, roster: [{ id: "u_host", slot: 1 }, { id: "u_member", slot: 2 }, { id: "u_third", slot: 3 }] };
 w1.count = 3;
 w1.sameEquip = false;
 w1.sameOperator = false;
@@ -419,7 +419,8 @@ console.log(
   "| excluded =", Object.keys(wireBack.excluded).filter((k) => wireBack.excluded[k]).join(","),
   "| 人数 =", wireBack.count,
   "| 结果玩家 =", wireBack.result && wireBack.result.players.length,
-  "| 锁定弹药 =", wireBack.locks[1].ammo
+  "| 锁定弹药 =", wireBack.locks[1].ammo,
+  "| roster =", wireBack.room.roster.length
 );
 if (wire.length > 2500) {
   throw new Error("联机状态超过 GoEasy publish 长度限制");
@@ -429,6 +430,9 @@ if (wireBack.room.id !== "123456") {
 }
 if (wireBack.count !== 3 || !wireBack.excluded["手枪"] || !wireBack.result || wireBack.result.players.length !== 3 || !wireBack.locks[1].ammo) {
   throw new Error("联机传输往返数据不一致");
+}
+if (wireBack.room.roster.length !== 3 || wireBack.room.roster[1].slot !== 2) {
+  throw new Error("联机传输丢失成员号位名单");
 }
 // 非法/截断消息安全回落
 const badWire = parseWire("not-json");

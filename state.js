@@ -49,14 +49,20 @@
     }
   }
 
-  // 联机房间信息：房间号 6 位数字、身份、在线人数
+  // 联机房间信息：房间号 6 位数字、身份、在线人数、成员号位名单 roster（[{id, slot}]）
   function normalizeRoom(room) {
     const r = room && typeof room === "object" ? room : {};
     const id = typeof r.id === "string" && /^\d{6}$/.test(r.id) ? r.id : null;
+    const roster = Array.isArray(r.roster)
+      ? r.roster
+          .filter((e) => e && typeof e.id === "string" && e.id && Number.isInteger(e.slot) && e.slot >= 1 && e.slot <= 3)
+          .map((e) => ({ id: e.id, slot: e.slot }))
+      : [];
     return {
       id,
       role: r.role === "member" ? "member" : r.role === "host" ? "host" : null,
-      online: Number.isInteger(r.online) && r.online >= 1 ? r.online : 1
+      online: Number.isInteger(r.online) && r.online >= 1 ? r.online : 1,
+      roster
     };
   }
 
@@ -124,6 +130,7 @@
       valueCapEnabled: s.valueCapEnabled,
       valueCap: s.valueCap,
       locks: s.locks,
+      roster: (s.room && s.room.roster) || [],
       result: s.result
     });
   }
@@ -138,6 +145,9 @@
         const ex = {};
         raw.excluded.forEach((k) => { ex[k] = true; });
         raw.excluded = ex;
+      }
+      if (Array.isArray(raw.roster) && raw.room) {
+        raw.room.roster = raw.roster;
       }
       return normalizeState(raw);
     } catch (e) {

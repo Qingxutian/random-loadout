@@ -4,6 +4,13 @@ import "./core.js";
 import "./state.js";
 import "./goeasy.js";
 
+// 模拟浏览器 sessionStorage：同一“浏览器”内身份稳定，切换角色时清空以模拟另一台设备
+let mockSessionUserId = null;
+globalThis.sessionStorage = {
+  getItem: (k) => (k === "rl_user_id" ? mockSessionUserId : null),
+  setItem: (k, v) => { if (k === "rl_user_id") mockSessionUserId = v; }
+};
+
 // ---------- 假 GoEasy：记录调用、可手动触发订阅回调 ----------
 const netCalls = {
   instances: [],
@@ -18,7 +25,7 @@ class FakeGoEasy {
   static getInstance(opts) {
     const inst = new FakeGoEasy();
     inst.opts = opts;
-    netCalls.instances.push(opts);
+    netCalls.instances.push(inst);
     return inst;
   }
   constructor() {
@@ -34,6 +41,7 @@ class FakeGoEasy {
   }
   connect(o) {
     this.connected = true;
+    this.connId = o && o.id;
     o.onProgress && o.onProgress(1);
     o.onSuccess && o.onSuccess();
   }
@@ -368,20 +376,29 @@ console.log(
 if (roomBar.classList.contains("hidden") || !/^\d{6}$/.test(hostRoomId) || roomRoleEl.textContent !== "房主" || controlsEl.classList.contains("room-member")) {
   throw new Error("创建房间后状态异常");
 }
+// 房主固定 1 号：第 1 张卡应标「你」
+const hostCardSegs = elements["#players"].innerHTML.split('<div class="player-card');
+console.log(
+  "房主号位：第 1 张卡标「你」 =",
+  hostCardSegs.length >= 2 && hostCardSegs[1].includes("you-badge") && !(hostCardSegs[2] || "").includes("you-badge")
+);
+if (hostCardSegs.length < 2 || !hostCardSegs[1].includes("you-badge") || (hostCardSegs[2] || "").includes("you-badge")) {
+  throw new Error("房主号位标记异常");
+}
 
 // 房主联机：CommonKey 连接 + 连接成功即广播状态
 const hostInst = netCalls.instances[0];
 console.log(
-  "房主联机：CommonKey =", hostInst && hostInst.appkey === "BC-8205070a1db64512908a6bd5c7b57838",
+  "房主联机：CommonKey =", hostInst && hostInst.opts.appkey === "BC-8205070a1db64512908a6bd5c7b57838",
   "| 已广播状态 =", netCalls.publishes.length >= 1,
   "| 已查询在线成员 =", netCalls.hereNowCalls.length >= 1
 );
-if (!hostInst || hostInst.appkey !== "BC-8205070a1db64512908a6bd5c7b57838" || netCalls.publishes.length < 1 || netCalls.hereNowCalls.length < 1) {
+if (!hostInst || hostInst.opts.appkey !== "BC-8205070a1db64512908a6bd5c7b57838" || netCalls.publishes.length < 1 || netCalls.hereNowCalls.length < 1) {
   throw new Error("房主未用 CommonKey 连接、未广播初始状态或未查询在线成员");
 }
 const hostState = JSON.parse(netCalls.publishes[0].message);
-if (!hostState.result || hostState.roomId !== hostRoomId) {
-  throw new Error("房主广播的状态缺少结果或房间号");
+if (!hostState.result || hostState.roomId !== hostRoomId || !Array.isArray(hostState.roster) || hostState.roster.length !== 1 || hostState.roster[0].slot !== 1 || hostState.roster[0].id !== hostInst.connId) {
+  throw new Error("房主广播的状态缺少结果、房间号或房主号位");
 }
 
 // 模拟队员加入：房主应收到 presence join 并补发一次状态（新人拿最新结果）。
@@ -393,9 +410,18 @@ hostPresence.onPresence({
   members: [{ id: "u_host" }, { id: "u_member" }],
   member: { id: "u_member", data: {} }
 });
-console.log("成员加入：在线人数更新 =", elements["#room-online"].textContent === "2", "| 房主补发状态 =", netCalls.publishes.length >= 2);
+const joinPublish = JSON.parse(netCalls.publishes[netCalls.publishes.length - 1].message);
+const memberSlot = (joinPublish.roster || []).find((e) => e.id === "u_member");
+console.log(
+  "成员加入：在线人数更新 =", elements["#room-online"].textContent === "2",
+  "| 房主补发状态 =", netCalls.publishes.length >= 2,
+  "| 分配 2 号 =", !!memberSlot && memberSlot.slot === 2
+);
 if (elements["#room-online"].textContent !== "2" || netCalls.publishes.length < 2) {
   throw new Error("presence join 未更新在线人数或未触发补发");
+}
+if (!memberSlot || memberSlot.slot !== 2) {
+  throw new Error("成员加入后未分配 2 号位");
 }
 
 // 回归：GoEasy 会把发布的消息回推给所有订阅者（包括房主本人）。
@@ -428,6 +454,7 @@ if (!roomBar.classList.contains("hidden") || netCalls.disconnects < 1) {
 }
 
 // 加入房间：非法输入报错，合法输入进入队员只读
+mockSessionUserId = null; // 模拟另一个浏览器/设备加入房间
 click(modeButtons[2]);
 joinInput.value = "123";
 click(joinConfirm);
@@ -450,24 +477,32 @@ if (roomIdEl.textContent !== "654321" || roomRoleEl.textContent !== "队员" || 
 const memberInst = netCalls.instances[1];
 const memberSub = netCalls.messageHandlers.find((h) => h.channel === "rl_654321");
 console.log(
-  "队员联机：SubscribeKey =", memberInst && memberInst.appkey === "BS-21aabf71b386448e88f1b7125e8e4003",
+  "队员联机：SubscribeKey =", memberInst && memberInst.opts.appkey === "BS-21aabf71b386448e88f1b7125e8e4003",
   "| 已订阅频道 =", !!memberSub
 );
-if (!memberInst || memberInst.appkey !== "BS-21aabf71b386448e88f1b7125e8e4003" || !memberSub) {
+if (!memberInst || memberInst.opts.appkey !== "BS-21aabf71b386448e88f1b7125e8e4003" || !memberSub) {
   throw new Error("队员未用 SubscribeKey 连接或未订阅频道");
 }
 
 // 模拟收到房主广播：队员页面应整体应用对方状态（不重新随机）
-memberSub.onMessage({ content: JSON.stringify(hostState) });
+const memberWire = JSON.parse(JSON.stringify(hostState));
+memberWire.roomId = "654321"; // 队员所在房间号必须匹配，否则守卫逻辑会忽略该消息
+memberWire.roster = [{ id: hostInst.connId, slot: 1 }, { id: memberInst.connId, slot: 2 }];
+memberSub.onMessage({ content: JSON.stringify(memberWire) });
 html = elements["#players"].innerHTML;
 meta = elements["#meta"].innerHTML;
+const memberCardSegs = html.split('<div class="player-card');
 console.log(
   "队员收包：卡片数 =", countCard(html),
   "| 显示房主地图 =", meta.includes(hostState.result.map),
-  "| 身份保持队员 =", roomRoleEl.textContent === "队员"
+  "| 身份保持队员 =", roomRoleEl.textContent === "队员",
+  "| 第 2 张卡标「你」 =", memberCardSegs.length >= 3 && memberCardSegs[2].includes("you-badge") && !memberCardSegs[1].includes("you-badge")
 );
 if (countCard(html) !== hostState.result.players.length || !meta.includes(hostState.result.map) || roomRoleEl.textContent !== "队员") {
   throw new Error("队员未正确应用房主广播的状态");
+}
+if (memberCardSegs.length < 3 || !memberCardSegs[2].includes("you-badge") || memberCardSegs[1].includes("you-badge")) {
+  throw new Error("队员号位「你」标记错误");
 }
 
 // 队员点随机不生效（结果不重新生成）

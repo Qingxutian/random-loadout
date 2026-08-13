@@ -21,6 +21,7 @@
     role: null,
     roomId: null,
     channel: null,
+    userId: null,
     connected: false,
     handlers: null
   };
@@ -134,7 +135,9 @@
     }
 
     const goEasy = net.goEasy;
-    const userId = opts.userId || genUserId();
+    // 身份统一由 sessionStorage 派生：同一标签页内稳定，不同浏览器/标签页各自独立
+    net.userId = opts.userId || genUserId();
+    const userId = net.userId;
     emitStatus("connecting", { attempts: 0 });
 
     try {
@@ -252,6 +255,7 @@
     getStatus,
     getRole: () => net.role,
     getRoomId: () => net.roomId,
+    getUserId: () => genUserId(),
     isAvailable: () => !!SDK()
   };
 
