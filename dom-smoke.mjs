@@ -389,6 +389,21 @@ if (elements["#room-online"].textContent !== "2" || netCalls.publishes.length < 
   throw new Error("presence join 未更新在线人数或未触发补发");
 }
 
+// 回归：GoEasy 会把发布的消息回推给所有订阅者（包括房主本人）。
+// 房主收到自己的广播回包后，身份必须保持「房主」，控件不能进入队员只读。
+const hostMsgHandler = netCalls.messageHandlers.find((h) => h.channel === "rl_" + hostRoomId);
+if (!hostMsgHandler) {
+  throw new Error("房主未订阅频道");
+}
+hostMsgHandler.onMessage({ content: netCalls.publishes[netCalls.publishes.length - 1].message });
+console.log(
+  "房主收到自己广播：身份保持 =", roomRoleEl.textContent === "房主",
+  "| 控件可操作 =", !controlsEl.classList.contains("room-member")
+);
+if (roomRoleEl.textContent !== "房主" || controlsEl.classList.contains("room-member")) {
+  throw new Error("房主收到自己广播后被降级为队员");
+}
+
 // 房间内再点创建/加入：提示需先退出
 click(modeButtons[2]);
 console.log("房间内点加入：弹窗保持关闭 =", modalEl.classList.contains("hidden"));

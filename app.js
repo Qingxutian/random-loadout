@@ -39,7 +39,8 @@
     GoEasyNet.publishState(LoadoutState.serializeWire(state));
   }
 
-  // 队员收到房主广播：归一化后整体替换本地 state（保留自己的身份和房间号）
+  // 收到房主广播：归一化后整体替换本地 state（保留自己的身份和房间号；
+  // GoEasy 会把消息回推给所有订阅者，房主收到自己的回包也不能被降级为队员）
   function handleRemoteState(content) {
     if (state.mode !== "room" || !state.room || !state.room.id) return;
     const incoming = typeof content === "string"
@@ -48,9 +49,10 @@
     if (!incoming.room || incoming.room.id !== state.room.id) return;
     const roomId = state.room.id;
     const online = state.room.online;
+    const role = state.room.role === "host" ? "host" : "member";
     Object.keys(incoming).forEach((k) => { state[k] = incoming[k]; });
     state.mode = "room";
-    state.room = { id: roomId, role: "member", online };
+    state.room = { id: roomId, role, online };
     syncAllControls();
     render();
   }
