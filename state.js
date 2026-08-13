@@ -119,6 +119,7 @@
       version: 2,
       mode: "room",
       roomId: s.room && s.room.id,
+      online: (s.room && s.room.online) || 1,
       count: s.count,
       operatorEnabled: s.operatorEnabled,
       sameOperator: s.sameOperator,
@@ -139,7 +140,7 @@
     try {
       const raw = JSON.parse(json);
       if (typeof raw.roomId === "string" && /^\d{6}$/.test(raw.roomId)) {
-        raw.room = { id: raw.roomId };
+        raw.room = { id: raw.roomId, online: raw.online };
       }
       if (Array.isArray(raw.excluded)) {
         const ex = {};

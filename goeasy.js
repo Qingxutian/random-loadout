@@ -218,6 +218,55 @@
     }
   }
 
+  /**
+   * 拉取频道内最近一条历史广播，用于加入/刷新后恢复房主数据
+   * 需要 GoEasy 后台开启历史消息；不可用时 onState(null) 由调用方回退
+   * @param {function} onState (latestMessage: string|null) => void
+   * @param {function} [onFailed] (err) => void
+   */
+  function fetchLatestState(onState, onFailed) {
+    const goEasy = net.goEasy;
+    if (!goEasy || !net.channel || !goEasy.pubsub || typeof goEasy.pubsub.history !== "function") {
+      if (onState) onState(null);
+      return false;
+    }
+    try {
+      goEasy.pubsub.history({
+        channel: net.channel,
+        limit: 1,
+        onSuccess: (res) => {
+          const content = (res && res.content) || res;
+          const messages = content && (Array.isArray(content.messages)
+            ? content.messages
+            : Array.isArray(content) ? content : null);
+          let latest = null;
+          if (Array.isArray(messages) && messages.length) {
+            const last = messages[messages.length - 1];
+            if (last && typeof last === "object") {
+              const m = last.message;
+              if (typeof m === "string") latest = m;
+              else if (m && typeof m === "object") latest = JSON.stringify(m);
+            } else if (typeof last === "string") {
+              latest = last;
+            }
+          } else if (content && typeof content.message === "string") {
+            latest = content.message;
+          }
+          if (onState) onState(latest);
+        },
+        onFailed: (err) => {
+          if (onFailed) onFailed(err);
+          else if (onState) onState(null);
+        }
+      });
+      return true;
+    } catch (e) {
+      if (onFailed) onFailed(e);
+      else if (onState) onState(null);
+      return false;
+    }
+  }
+
   /** 主动断开：退订频道 + 断开连接，回到可再次创建/加入的状态 */
   function disconnect() {
     const goEasy = net.goEasy;
@@ -227,6 +276,7 @@
     net.role = null;
     net.roomId = null;
     net.channel = null;
+    net.userId = null;
     if (!goEasy) return;
     try {
       if (channel) {
@@ -252,10 +302,11 @@
     disconnect,
     publishState,
     queryMembers,
+    fetchLatestState,
     getStatus,
     getRole: () => net.role,
     getRoomId: () => net.roomId,
-    getUserId: () => genUserId(),
+    getUserId: () => net.userId || genUserId(),
     isAvailable: () => !!SDK()
   };
 

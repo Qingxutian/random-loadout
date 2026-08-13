@@ -34,6 +34,46 @@
 
   // ---------- 联机同步 ----------
   // 房主每次修改配置 / 随机 / 锁定后广播全量 state；队员收到后直接应用，不再本地随机
+  // 房间会话持久化：把 {roomId, role, userId} 存进 localStorage，刷新/误关后自动恢复，不会退出房间
+  const SESSION_KEY = "rl_room_session";
+  // 房主轮询校准号位与在线人数的间隔（测试可通过 __ROSTER_POLL_MS__ 调短）
+  const ROSTER_POLL_MS = (typeof globalThis !== "undefined" && Number.isInteger(globalThis.__ROSTER_POLL_MS__) && globalThis.__ROSTER_POLL_MS__ > 0)
+    ? globalThis.__ROSTER_POLL_MS__
+    : 8000;
+  let restoredSession = false;
+  let rosterPollTimer = null;
+
+  function loadRoomSession() {
+    try {
+      if (typeof localStorage === "undefined") return null;
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      if (s && typeof s.roomId === "string" && /^\d{6}$/.test(s.roomId)
+        && (s.role === "host" || s.role === "member")) {
+        return { roomId: s.roomId, role: s.role, userId: typeof s.userId === "string" && s.userId ? s.userId : null };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  function saveRoomSession() {
+    try {
+      if (typeof localStorage === "undefined" || !state.room || !state.room.id) return;
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        roomId: state.room.id,
+        role: state.room.role,
+        userId: GoEasyNet.getUserId()
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function clearRoomSession() {
+    try {
+      if (typeof localStorage !== "undefined") localStorage.removeItem(SESSION_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
   function broadcast() {
     if (state.mode !== "room" || !state.room || state.room.role !== "host") return;
     GoEasyNet.publishState(LoadoutState.serializeWire(state));
@@ -48,12 +88,16 @@
       : LoadoutState.normalizeState(content);
     if (!incoming.room || incoming.room.id !== state.room.id) return;
     const roomId = state.room.id;
-    const online = state.room.online;
+    // 房主在线数由本端轮询维护；队员以广播里携带的在线数为准
+    const online = state.room.role === "host"
+      ? state.room.online
+      : (Number.isInteger(incoming.room.online) && incoming.room.online >= 1 ? incoming.room.online : state.room.online);
     const role = state.room.role === "host" ? "host" : "member";
     const roster = (incoming.room && Array.isArray(incoming.room.roster)) ? incoming.room.roster : [];
     Object.keys(incoming).forEach((k) => { state[k] = incoming[k]; });
     state.mode = "room";
     state.room = { id: roomId, role, online, roster };
+    renderRoomUI();
     syncAllControls();
     render();
   }
@@ -104,6 +148,68 @@
     renderRoomUI();
     if (rosterChanged) render();
     if (rosterChanged || (state.room.role === "host" && (action === "join" || action === "back"))) broadcast();
+  }
+
+  // 房主用 hereNow 轮询校准在线人数与号位：不依赖 presence 事件也能发现新成员
+  // 对 roster 中不在线的成员释放号位，对新成员按 1..3 空位分配，名单变化才补发广播
+  function reconcileMembers(r) {
+    if (state.mode !== "room" || !state.room || state.room.role !== "host" || !r) return;
+    const ids = (Array.isArray(r.members) ? r.members : [])
+      .map((m) => m && m.id)
+      .filter(Boolean);
+    const amount = Number.isInteger(r.amount) && r.amount >= 1 ? r.amount : 0;
+    const online = Math.max(ids.length, amount) >= 1 ? Math.max(ids.length, amount) : state.room.online;
+    const myId = GoEasyNet.getUserId();
+
+    let changed = false;
+    let roster = Array.isArray(state.room.roster) ? state.room.roster.slice() : [];
+    const before = roster.length;
+    // 已不在线的成员释放号位；房主自己始终保留
+    roster = roster.filter((e) => ids.includes(e.id) || e.id === myId);
+    if (roster.length !== before) changed = true;
+
+    const used = {};
+    roster.forEach((e) => { used[e.slot] = true; });
+    for (const id of ids) {
+      if (id === myId || roster.some((e) => e.id === id)) continue;
+      let slot = 0;
+      for (let i = 1; i <= state.count; i++) {
+        if (!used[i]) { slot = i; break; }
+      }
+      if (slot) {
+        roster.push({ id, slot });
+        used[slot] = true;
+        changed = true;
+      }
+    }
+
+    if (state.room.online !== online) {
+      state.room.online = online;
+      changed = true;
+    }
+    if (changed) {
+      state.room.roster = roster;
+      renderRoomUI();
+      broadcast();
+    }
+  }
+
+  function startRosterPolling() {
+    stopRosterPolling();
+    rosterPollTimer = setInterval(() => {
+      if (state.mode !== "room" || !state.room || state.room.role !== "host") return;
+      GoEasyNet.queryMembers((r) => {
+        if (state.mode !== "room" || !state.room || state.room.role !== "host") return;
+        reconcileMembers(r);
+      });
+    }, ROSTER_POLL_MS);
+  }
+
+  function stopRosterPolling() {
+    if (rosterPollTimer) {
+      clearInterval(rosterPollTimer);
+      rosterPollTimer = null;
+    }
   }
 
   const netStatusLabels = {
@@ -221,7 +327,12 @@
     btn.addEventListener("click", () => {
       const mode = btn.dataset.mode;
       if (mode === "solo") {
-        if (state.mode === "room") GoEasyNet.disconnect();
+        if (state.mode === "room") {
+          stopRosterPolling();
+          clearRoomSession();
+          GoEasyNet.disconnect();
+        }
+        restoredSession = false;
         state.mode = "solo";
         state.room = null;
         renderRoomUI();
@@ -274,32 +385,55 @@
     onPresence: handlePresence,
     onStatus: handleNetStatus,
     onReady: () => {
-      if (state.mode === "room" && state.room && state.room.role === "host") {
-        broadcast(); // 房主连接成功后立即广播当前状态
-      }
-      // 连接成功后主动查一次在线成员，避免人数停留在初始的 1
-      GoEasyNet.queryMembers((r) => {
-        if (state.mode !== "room" || !state.room || !r) return;
-        const n = (Array.isArray(r.members) && r.members.length >= 1)
-          ? r.members.length
-          : Number(r.amount);
-        if (Number.isInteger(n) && n >= 1 && state.room.online !== n) {
-          state.room.online = n;
-          renderRoomUI();
+      if (state.mode !== "room" || !state.room || !state.room.id) return;
+      const isHost = state.room.role === "host";
+      // 拉取历史广播并应用；返回是否真正应用到了本房间的数据
+      const applyHistory = (incoming) => {
+        if (!incoming || state.mode !== "room" || !state.room || !state.room.id) return false;
+        const parsed = typeof incoming === "string"
+          ? LoadoutState.parseWire(incoming)
+          : LoadoutState.normalizeState(incoming);
+        if (parsed.room && parsed.room.id === state.room.id) {
+          handleRemoteState(incoming);
+          return true;
         }
-      });
+        return false;
+      };
+      if (isHost) {
+        // 先校准在线人数/号位，再拉历史恢复数据，最后广播一次并启动轮询
+        const finish = (applied) => {
+          if (restoredSession && !applied) showToast("已恢复房主会话，请重新随机");
+          broadcast();
+          startRosterPolling();
+        };
+        const afterReconcile = () => {
+          GoEasyNet.fetchLatestState((incoming) => finish(applyHistory(incoming)), () => finish(false));
+        };
+        GoEasyNet.queryMembers((r) => {
+          if (state.mode === "room" && state.room && state.room.role === "host") reconcileMembers(r);
+          afterReconcile();
+        }, afterReconcile);
+      } else {
+        // 队员/刷新恢复：连接成功即拉取房主最近一次广播，立即同步数据与号位
+        GoEasyNet.fetchLatestState((incoming) => {
+          if (restoredSession) showToast(applyHistory(incoming) ? "已恢复队员会话" : "已恢复队员会话，等待房主同步");
+          else applyHistory(incoming);
+        });
+      }
     }
   };
 
   $("#create-room-confirm").addEventListener("click", () => {
     const id = createCode.textContent.trim();
     if (!/^\d{6}$/.test(id)) return;
+    restoredSession = false;
     state.mode = "room";
     state.room = { id, role: "host", online: 1, roster: [{ id: GoEasyNet.getUserId(), slot: 1 }] };
     closeRoomModal();
     renderRoomUI();
     render();
     GoEasyNet.connect({ roomId: id, role: "host", handlers: netHandlers });
+    saveRoomSession();
     showToast("房间已创建，等待队友加入…");
   });
 
@@ -309,11 +443,13 @@
       joinError.textContent = "请输入 6 位数字房间号";
       return;
     }
+    restoredSession = false;
     state.mode = "room";
     state.room = { id, role: "member", online: 1 };
     closeRoomModal();
     renderRoomUI();
     GoEasyNet.connect({ roomId: id, role: "member", handlers: netHandlers });
+    saveRoomSession();
     showToast("正在加入房间…");
   });
 
@@ -323,7 +459,10 @@
   });
 
   $("#room-exit").addEventListener("click", () => {
+    stopRosterPolling();
+    clearRoomSession();
     GoEasyNet.disconnect();
+    restoredSession = false;
     state.mode = "solo";
     state.room = null;
     renderRoomUI();
@@ -757,7 +896,30 @@
   });
   window.addEventListener("beforeunload", () => GoEasyNet.disconnect());
 
-  renderRoomUI();
-  syncAllControls();
-  roll();
+  // 启动：优先恢复上次的房间会话（刷新/误关后自动回到房间），否则进入单人模式
+  function boot() {
+    const session = loadRoomSession();
+    if (session) {
+      restoredSession = true;
+      state.mode = "room";
+      state.room = { id: session.roomId, role: session.role, online: 1 };
+      renderRoomUI();
+      GoEasyNet.connect({
+        roomId: session.roomId,
+        role: session.role,
+        userId: session.userId || undefined,
+        handlers: netHandlers
+      });
+      showToast(session.role === "host" ? "正在恢复房主会话…" : "正在恢复队员会话…");
+      return;
+    }
+    renderRoomUI();
+    syncAllControls();
+    roll();
+  }
+  // 测试钩子：模拟页面刷新后重新走一遍启动恢复逻辑（仅测试用，不影响页面功能）
+  if (typeof globalThis !== "undefined") {
+    globalThis.__loadoutRestart = boot;
+  }
+  boot();
 })();

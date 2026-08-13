@@ -10,6 +10,16 @@ globalThis.sessionStorage = {
   getItem: (k) => (k === "rl_user_id" ? mockSessionUserId : null),
   setItem: (k, v) => { if (k === "rl_user_id") mockSessionUserId = v; }
 };
+// 模拟 localStorage：用于房间会话持久化（刷新/误关后恢复）
+let mockLocalStore = {};
+globalThis.localStorage = {
+  getItem: (k) => (k in mockLocalStore ? mockLocalStore[k] : null),
+  setItem: (k, v) => { mockLocalStore[k] = String(v); },
+  removeItem: (k) => { delete mockLocalStore[k]; }
+};
+// 测试环境把房主轮询间隔调短，便于在几十毫秒内验证
+globalThis.__ROSTER_POLL_MS__ = 20;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- 假 GoEasy：记录调用、可手动触发订阅回调 ----------
 const netCalls = {
@@ -18,8 +28,11 @@ const netCalls = {
   messageHandlers: [],
   presenceHandlers: [],
   hereNowCalls: [],
+  historyCalls: [],
   disconnects: 0
 };
+const historyMessages = []; // 模拟 GoEasy 历史：publish 即入库，history 可取最近一条
+let extraHereNowMembers = []; // 额外的在线成员 id（当前连接者自动计入）
 
 class FakeGoEasy {
   static getInstance(opts) {
@@ -31,10 +44,23 @@ class FakeGoEasy {
   constructor() {
     this.connected = false;
     this.pubsub = {
-      publish: (o) => { netCalls.publishes.push(o); o.onSuccess && o.onSuccess(); },
+      publish: (o) => {
+        netCalls.publishes.push(o);
+        historyMessages.push(o.message);
+        o.onSuccess && o.onSuccess();
+      },
       subscribe: (o) => { netCalls.messageHandlers.push({ channel: o.channel, onMessage: o.onMessage }); o.onSuccess && o.onSuccess(); },
       unsubscribe: (o) => { o.onSuccess && o.onSuccess(); },
-      hereNow: (o) => { netCalls.hereNowCalls.push(o); o.onSuccess && o.onSuccess({ content: { members: [{ id: "u_host" }], amount: 1 } }); },
+      hereNow: (o) => {
+        netCalls.hereNowCalls.push(o);
+        const members = [{ id: this.connId }, ...extraHereNowMembers.map((id) => ({ id }))];
+        o.onSuccess && o.onSuccess({ content: { members, amount: members.length } });
+      },
+      history: (o) => {
+        netCalls.historyCalls.push(o);
+        const msgs = historyMessages.slice(-(o.limit || 1));
+        o.onSuccess && o.onSuccess({ content: { messages: msgs.map((m) => ({ message: m })) } });
+      },
       subscribePresence: (o) => { netCalls.presenceHandlers.push({ channel: o.channel, onPresence: o.onPresence }); o.onSuccess && o.onSuccess(); },
       unsubscribePresence: (o) => { o.onSuccess && o.onSuccess(); }
     };
@@ -400,6 +426,11 @@ const hostState = JSON.parse(netCalls.publishes[0].message);
 if (!hostState.result || hostState.roomId !== hostRoomId || !Array.isArray(hostState.roster) || hostState.roster.length !== 1 || hostState.roster[0].slot !== 1 || hostState.roster[0].id !== hostInst.connId) {
   throw new Error("房主广播的状态缺少结果、房间号或房主号位");
 }
+const hostSession = JSON.parse(localStorage.getItem("rl_room_session") || "{}");
+console.log("房间会话持久化：已保存房主会话 =", hostSession.roomId === hostRoomId && hostSession.role === "host");
+if (hostSession.roomId !== hostRoomId || hostSession.role !== "host") {
+  throw new Error("房主会话未写入 localStorage");
+}
 
 // 模拟队员加入：房主应收到 presence join 并补发一次状态（新人拿最新结果）。
 // 回归：presence 事件的 amount 不可靠（这里故意给 1），人数必须按成员列表 members 计算为 2
@@ -452,6 +483,10 @@ console.log("退出房间：状态栏隐藏 =", roomBar.classList.contains("hidd
 if (!roomBar.classList.contains("hidden") || netCalls.disconnects < 1) {
   throw new Error("退出房间失败");
 }
+console.log("退出房间：会话已清除 =", localStorage.getItem("rl_room_session") === null);
+if (localStorage.getItem("rl_room_session") !== null) {
+  throw new Error("退出后房间会话未清除");
+}
 
 // 加入房间：非法输入报错，合法输入进入队员只读
 mockSessionUserId = null; // 模拟另一个浏览器/设备加入房间
@@ -471,6 +506,11 @@ console.log(
 );
 if (roomIdEl.textContent !== "654321" || roomRoleEl.textContent !== "队员" || !controlsEl.classList.contains("room-member")) {
   throw new Error("加入房间后状态异常");
+}
+const memberSession = JSON.parse(localStorage.getItem("rl_room_session") || "{}");
+console.log("加入房间：已保存队员会话 =", memberSession.roomId === "654321" && memberSession.role === "member");
+if (memberSession.roomId !== "654321" || memberSession.role !== "member") {
+  throw new Error("队员会话未写入 localStorage");
 }
 
 // 队员联机：SubscribeKey 连接 + 订阅房主频道
@@ -515,6 +555,52 @@ if (html !== htmlAfterMemberRoll) {
 }
 click(roomExit);
 console.log("队员退出：已断开联机 =", netCalls.disconnects >= 2);
+
+// ===== 房主轮询校准：不依赖 presence 事件也能发现新成员并分配号位 =====
+mockSessionUserId = null; // 模拟又一台设备创建新房间
+extraHereNowMembers = [];
+click(modeButtons[1]);
+click(createConfirm);
+const host2RoomId = roomIdEl.textContent;
+const publishBeforePoll = netCalls.publishes.length;
+extraHereNowMembers = ["u_member2"]; // 成员已在线，但 presence 事件完全丢失
+await sleep(80); // 等房主轮询触发
+const pollPublish = JSON.parse(netCalls.publishes[netCalls.publishes.length - 1].message);
+const member2Entry = (pollPublish.roster || []).find((e) => e.id === "u_member2");
+console.log(
+  "房主轮询：在线人数 =", elements["#room-online"].textContent,
+  "| 分配 2 号 =", !!member2Entry && member2Entry.slot === 2,
+  "| 补发广播 =", netCalls.publishes.length > publishBeforePoll,
+  "| 广播携带在线数 =", pollPublish.online === 2
+);
+if (elements["#room-online"].textContent !== "2" || !member2Entry || member2Entry.slot !== 2
+  || netCalls.publishes.length <= publishBeforePoll || pollPublish.online !== 2) {
+  throw new Error("房主轮询未发现新成员或未分配号位");
+}
+click(roomExit);
+
+// ===== 刷新页面恢复会话：队员刷新后自动回房并同步房主数据 =====
+const restoredWire = JSON.parse(JSON.stringify(memberWire));
+historyMessages.push(JSON.stringify(restoredWire)); // 模拟历史里已有房主对该房间的最新广播
+localStorage.setItem("rl_room_session", JSON.stringify({ roomId: "654321", role: "member", userId: memberInst.connId }));
+globalThis.__loadoutRestart(); // 模拟刷新：重新执行启动恢复逻辑
+const restoredInst = netCalls.instances[netCalls.instances.length - 1];
+const restoredHtml = elements["#players"].innerHTML;
+const restoredSegs = restoredHtml.split('<div class="player-card');
+console.log(
+  "刷新恢复：自动回房 =", roomIdEl.textContent === "654321",
+  "| 身份队员 =", roomRoleEl.textContent === "队员",
+  "| 原身份重连 =", !!restoredInst && restoredInst.connId === memberInst.connId,
+  "| SubscribeKey =", !!restoredInst && restoredInst.opts.appkey === "BS-21aabf71b386448e88f1b7125e8e4003",
+  "| 同步房主数据 =", countCard(restoredHtml) === 2,
+  "| 第 2 张卡标「你」 =", restoredSegs.length >= 3 && restoredSegs[2].includes("you-badge") && !restoredSegs[1].includes("you-badge")
+);
+if (roomIdEl.textContent !== "654321" || roomRoleEl.textContent !== "队员" || !restoredInst
+  || restoredInst.connId !== memberInst.connId || restoredInst.opts.appkey !== "BS-21aabf71b386448e88f1b7125e8e4003"
+  || countCard(restoredHtml) !== 2
+  || !(restoredSegs.length >= 3 && restoredSegs[2].includes("you-badge") && !restoredSegs[1].includes("you-badge"))) {
+  throw new Error("刷新后未恢复队员会话或未同步房主数据");
+}
 
 if (countCard(html) !== hostState.result.players.length) {
   throw new Error("渲染结果与预期不符");
